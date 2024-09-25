@@ -1,8 +1,0 @@
-numpy
-matplotlib
-control
-pandas
-pyyaml
-more_itertools
-keras
-tensorflow
