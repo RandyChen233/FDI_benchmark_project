@@ -1,3 +1,4 @@
 *.png
 *.npy
 *.zip
+*.pyc
