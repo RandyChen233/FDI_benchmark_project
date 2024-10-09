@@ -5,6 +5,41 @@ import numpy as np
 from quovadis_tad import config_data3D
 
 
+def create_tf_dataset_classify(
+    data_array: np.ndarray,
+    labels_array: np.ndarray,  # Adding the ground truth labels (0 or 1) as input
+    input_sequence_length: int,
+    batch_size: int = 128,
+    shuffle=False
+    ):
+
+    # Create input sequences
+    inputs = timeseries_dataset_from_array(
+        data_array,
+        None,
+        sequence_length=input_sequence_length,
+        shuffle=shuffle,
+        batch_size=batch_size,
+    )
+    
+    # Create corresponding target sequences from the label array
+    targets = timeseries_dataset_from_array(
+        labels_array,
+        None,
+        sequence_length=input_sequence_length,
+        shuffle=False,  # Targets should follow the input sequence
+        batch_size=batch_size,
+    )
+
+    # Zip inputs and targets together into a dataset
+    dataset = tf.data.Dataset.zip((inputs, targets))
+    
+    if shuffle:
+        dataset = dataset.shuffle(100)
+
+    return dataset.prefetch(16).cache()
+
+
 def create_tf_dataset(
     data_array: np.ndarray,    
     input_sequence_length: int,
@@ -79,6 +114,41 @@ def create_tf_dataset(
         return dataset
     else:
         return dataset.prefetch(16).cache()
+
+
+def create_tf_dataset_from_3d_array_classify(
+    data_array: np.ndarray,
+    labels_array: np.ndarray,  # Adding the ground truth labels for classification
+    input_sequence_length: int = 12,
+    batch_size: int = 1,
+    shuffle=False):
+
+    datasets = []
+    for scenario_data, scenario_labels in zip(data_array, labels_array):
+        dataset = create_tf_dataset_classify(
+            data_array=scenario_data,
+            labels_array=scenario_labels,  # Pass the labels
+            input_sequence_length=input_sequence_length,
+            batch_size=batch_size,
+            shuffle=shuffle
+        )
+        datasets.append(dataset)
+
+    # Create a dataset of datasets
+    dataset_of_datasets = tf.data.Dataset.from_tensor_slices(datasets)
+
+    # Interleave the datasets to cycle through scenarios
+    combined_dataset = dataset_of_datasets.interleave(
+        lambda x: x,
+        cycle_length=len(datasets),
+        block_length=1,
+        num_parallel_calls=tf.data.AUTOTUNE
+    )
+
+    if shuffle:
+        combined_dataset = combined_dataset.shuffle(buffer_size=100)
+
+    return combined_dataset.prefetch(16).cache()
 
 
 def create_tf_dataset_from_3d_array(data_array,

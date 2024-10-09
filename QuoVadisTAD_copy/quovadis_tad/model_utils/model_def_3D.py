@@ -116,7 +116,6 @@ def build_sequence_embedder(input_shape=(None, None),
     dropout_rate = config['dropout_rate']
     positional_encoding=config['positional_encoding']
 
-    
     if model == "1_Layer_GCN_LSTM":
         return gcn_sequense_sensor_error_model_v1(input_shape, config=config, training=training)
   

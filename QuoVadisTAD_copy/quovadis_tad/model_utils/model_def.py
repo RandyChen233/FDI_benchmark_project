@@ -5,11 +5,11 @@ import numpy as np
 import yaml
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import layers
+from keras import layers, models
 from quovadis_tad.dataset_utils.dataset_reader import datasets
 from quovadis_tad.dataset_utils.data_utils import preprocess_data, preprocess_data_3D,concatenate_windows_feat
-from quovadis_tad.model_utils.tf_data_loader import create_tf_dataset, create_tf_dataset_from_3d_array
-from tensorflow.keras.preprocessing import timeseries_dataset_from_array
+from quovadis_tad.model_utils.tf_data_loader import *
+from keras.preprocessing import timeseries_dataset_from_array
 from quovadis_tad.model_utils.gnn import get_graph_info, LSTMGC, get_graph_info_3D
 from quovadis_tad import config_data3D
 
@@ -26,33 +26,62 @@ def get_label_loader(labels, config):
     )
     return labels_gen
 
+"""Todo: modify get_dataloader to adapt to classificaiton models (supervised)"""
 def get_dataloader(data_array,
+                   labels_array = np.ndarray,
                    input_sequence_length=12,
                    batch_size=1,
                    reconstruction_dataset=False,
-                   shuffle=False):
+                   classification=True,
+                   shuffle=False,
+                   ):
     #TODO pass this also from configs. for now it is fixed
     forecast_horizon = 1
     #config_data3D.data3D=False
     if config_data3D.data3D:
-        return create_tf_dataset_from_3d_array(data_array, input_sequence_length, forecast_horizon,
-                                               batch_size=batch_size, reconstruction_dataset=reconstruction_dataset,
-                                               shuffle=shuffle)
-    else:
-        return create_tf_dataset(data_array,input_sequence_length,forecast_horizon,batch_size=batch_size,
-                             reconstruction_dataset=reconstruction_dataset,shuffle=shuffle)
+        if not classification:
+            return create_tf_dataset_from_3d_array(data_array, 
+                                                   input_sequence_length, 
+                                                   forecast_horizon,
+                                                    batch_size=batch_size, 
+                                                    reconstruction_dataset=reconstruction_dataset,
+                                                    shuffle=shuffle)
+        else:
+            return create_tf_dataset_from_3d_array_classify(data_array, 
+                                                            labels_array,
+                                                            input_sequence_length, 
+                                                            batch_size=batch_size, 
+                                                            shuffle=shuffle)
 
+    else:
+        if not classification:
+            return create_tf_dataset(data_array,
+                                    input_sequence_length,
+                                    forecast_horizon,
+                                    batch_size=batch_size,
+                                    reconstruction_dataset=reconstruction_dataset,
+                                    shuffle=shuffle)
+        else:
+            return create_tf_dataset_classify(data_array,
+                                              labels_array,
+                                              input_sequence_length,
+                                              batch_size,
+                                              shuffle=shuffle)
 
 
 def norm_1_1(arr):
     return 2 * arr - 1
 
-def read_data(module_path, dataset_name, dataset_trace=None,
-             preprocess="0-1", config=None):
+def read_data(module_path, 
+                dataset_name, 
+                dataset_trace=None,
+                preprocess="0-1", 
+                config=None):
     # prepare dataset
-    trainset, testset, labels = datasets[dataset_name](module_path)
+    trainset, testset, labels = datasets[dataset_name](module_path) #based on load_Ourbench()
 
     if config_data3D.data3D:
+        print(f'Using 3D dataset...')
         dataset_trace = 0
         trainset=np.array(trainset)
         testset=np.array(testset)
@@ -87,10 +116,9 @@ def read_data(module_path, dataset_name, dataset_trace=None,
         trainset, valset, testset = preprocess_data(trainset, testset, 0.9, 0.1, normalization=preprocess)
     
 
-
     return trainset, valset, testset, labels, dataset_trace
 
-
+"""The baseline models:"""
 class MLPMixerLayer(layers.Layer):
     def __init__(self, num_patches, hidden_units, dropout_rate, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -129,7 +157,6 @@ class MLPMixerLayer(layers.Layer):
         # Add skip connection.
         x = x + mlp2_outputs
         return x
-
 
 class TransformerBlock(layers.Layer):
     def __init__(self, embed_dim, num_heads, ff_dim, rate=0.1):
@@ -182,7 +209,6 @@ def gcn_sequense_sensor_error_model_v1(input_shape, config=None, training=True):
     
     inputs_nodes = layers.Reshape((num_seq, num_nodes, 1))(inputs)  #(batch, seq, nodes, 1)    
     
-    
     regression_targets = gcn_node(inputs_nodes) #output shape (batch_size, output_dim_1, num_nodes]
     
     regression_targets = layers.Dense(num_nodes)(regression_targets)
@@ -193,6 +219,90 @@ def gcn_sequense_sensor_error_model_v1(input_shape, config=None, training=True):
         model = keras.Model(inputs=inputs, outputs=regression_targets)
     return model 
 
+
+"""Supervised classification models:"""
+"""The classification models always ouputs a binary ouput: either 0 (no faults) or 1 (faults)"""
+# (a) MLP Implementation
+# Modified to output fault classification for each time step
+def build_mlp(input_shape, num_classes=1):
+    model = models.Sequential()
+    model.add(layers.Input(shape=input_shape))
+    model.add(layers.Dropout(0.1))
+    model.add(layers.Dense(500, activation='relu'))
+    model.add(layers.Dropout(0.2))
+    model.add(layers.Dense(500, activation='relu'))
+    model.add(layers.Dropout(0.2))
+    model.add(layers.Dense(500, activation='relu'))
+    model.add(layers.Dropout(0.3))
+    model.add(layers.TimeDistributed(layers.Dense(num_classes, activation='sigmoid')))
+    return model
+
+# (b) FCN Implementation
+# Modified to output fault classification for each time step
+def build_fcn(input_shape, num_classes=1):
+    model = models.Sequential()
+    model.add(layers.Input(shape=input_shape))
+    model.add(layers.Conv1D(128, kernel_size=8, padding='same'))
+    model.add(layers.BatchNormalization())
+    model.add(layers.ReLU())
+    model.add(layers.Conv1D(256, kernel_size=5, padding='same'))
+    model.add(layers.BatchNormalization())
+    model.add(layers.ReLU())
+    model.add(layers.Conv1D(128, kernel_size=3, padding='same'))
+    model.add(layers.BatchNormalization())
+    model.add(layers.ReLU())
+    model.add(layers.TimeDistributed(layers.Dense(num_classes, activation='sigmoid')))
+    return model
+
+# (c) ResNet Implementation (1D version)
+# Modified to output fault classification for each time step
+def build_resnet(input_shape, num_classes=1):
+    inputs = layers.Input(shape=input_shape)
+    
+    # First ResNet Block
+    x = layers.Conv1D(64, kernel_size=8, padding='same')(inputs)
+    x = layers.BatchNormalization()(x)
+    x = layers.ReLU()(x)
+    x = layers.Conv1D(64, kernel_size=5, padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.ReLU()(x)
+    x = layers.Conv1D(64, kernel_size=3, padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    shortcut = layers.Conv1D(64, kernel_size=1, padding='same')(inputs)
+    x = layers.Add()([x, shortcut])
+    x = layers.ReLU()(x)
+    
+    # Second ResNet Block
+    x = layers.Conv1D(128, kernel_size=8, padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.ReLU()(x)
+    x = layers.Conv1D(128, kernel_size=5, padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.ReLU()(x)
+    x = layers.Conv1D(128, kernel_size=3, padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    shortcut = layers.Conv1D(128, kernel_size=1, padding='same')(shortcut)
+    x = layers.Add()([x, shortcut])
+    x = layers.ReLU()(x)
+    
+    # Third ResNet Block
+    x = layers.Conv1D(128, kernel_size=8, padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.ReLU()(x)
+    x = layers.Conv1D(128, kernel_size=5, padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.ReLU()(x)
+    x = layers.Conv1D(128, kernel_size=3, padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    shortcut = layers.Conv1D(128, kernel_size=1, padding='same')(shortcut)
+    x = layers.Add()([x, shortcut])
+    x = layers.ReLU()(x)
+    
+    # TimeDistributed Fully Connected Layer and Sigmoid Output
+    x = layers.TimeDistributed(layers.Dense(num_classes, activation='sigmoid'))(x)
+    
+    model = models.Model(inputs, x)
+    return model
 
 
 def build_sequence_embedder(input_shape=(None, None),
@@ -226,12 +336,24 @@ def build_sequence_embedder(input_shape=(None, None),
     
     elif model == "1_Layer_GCN_LSTM": 
         return gcn_sequense_sensor_error_model_v1(input_shape, config=config, training=training)
+    
+    elif model == "MLP":
+        return build_mlp(input_shape,num_classes=1)
+    
+    elif model == "FCN":
+        return build_fcn(input_shape,num_classes=1)
+    
+    elif model == "ResNet":
+        return build_resnet(input_shape,num_classes=1)
   
     else:
         raise ValueError('model type not Implemented. use one of {1_Layer_GCN_LSTM, Single_block_MLPMixer, Single_Transformer_block, 1_Layer_MLP}')    
     
+
+
     # Specify Model architecture
     inputs = layers.Input(shape=input_shape)
+    print(f'inputs have shape {inputs.shape}')
 
     x = layers.Dense(units=embedding_dim)(inputs)  # (batch_size, input_seq_len, embedding_dim) project input embedding dim length
     if positional_encoding:
@@ -251,6 +373,7 @@ def build_sequence_embedder(input_shape=(None, None),
         embedding =  layers.GlobalAveragePooling1D(name="embedding")(embedding)
     
     regression_targets = layers.Dense(input_shape[1])(embedding)
+    print(f'Regression output has shape {regression_targets.shape}')
     # Create the Keras model.
     if not training:
         return keras.Model(inputs=inputs, outputs=[regression_targets, embedding])
@@ -286,22 +409,27 @@ def get_model(input_shape,
         latest_checkpoint = tf.train.latest_checkpoint(model_dir)
         model.load_weights(latest_checkpoint).expect_partial()
         print('Loaded pretrained_checkpoint')
+
     if compile_model:
-        model.compile(optimizer=optim,
-                      loss=keras.losses.MeanSquaredError(),
-        )
+        if config_data['model'] in {"MLP", "FCN", "ResNet"}:
+            model.compile(optimizer=optim,
+                          loss=keras.losses.BinaryCrossentropy(),
+            )
+        else:
+            model.compile(optimizer=optim,
+                          loss=keras.losses.MeanSquaredError(),
+            )
     return model
 
 
     
-
 def train_embedder(module_path,
                    dataset_name,
                    dataset_trace=None,
                    config_path=None,                   
                    load_weights=False,
-                   training=True
-                   ):
+                   training=True,
+                   classification=True):
     config_name = os.path.basename(config_path)
     # Read config
     with open(config_path) as f:
@@ -313,14 +441,17 @@ def train_embedder(module_path,
         config_data["reconstruction"] = False
         print(f'reconstruction dataset mode not found in config... setting it to False')
     
-    
-    
     # read dataset
-    trainset, valset, testset, _, dataset_trace = read_data(module_path,
+    trainset, valset, testset, labels, dataset_trace = read_data(module_path,
                                                          dataset_name,
                                                          dataset_trace=dataset_trace,
                                                          preprocess=config_data["preprocess"],
                                                          config=config_data)
+    labels_gen = get_label_loader(labels, config_data)
+    gt_labels= []
+    for gt in labels_gen.as_numpy_iterator():
+        gt_labels.append(gt)
+    gt_labels = np.vstack(gt_labels)
 
     if dataset_trace is None:
         checkpoint_folder = Path(module_path, 'resources', 'model_checkpoints', dataset_name, config_name.split('.')[0])
@@ -331,17 +462,24 @@ def train_embedder(module_path,
     
     # get data loaders
     train_dataset = get_dataloader(trainset,
+                                   labels_array=gt_labels,
                                    batch_size=config_data['batch_size'],
                                    input_sequence_length=config_data['input_sequence_length'],
                                    reconstruction_dataset=config_data["reconstruction"],
-                                   shuffle=True)
+                                   classification=classification,
+                                   shuffle=True,
+                                   )
     val_dataset = get_dataloader(valset,
+                                 labels_array=gt_labels,
                                  batch_size=config_data['batch_size'],
                                  input_sequence_length=config_data['input_sequence_length'],
-                                 reconstruction_dataset=config_data["reconstruction"])                  
+                                 reconstruction_dataset=config_data["reconstruction"],
+                                 classification=classification,
+                                 )                  
     
     # model inout_shape (dataloader output [batch_size, input_sequence_length, nodes])              
     input_shape = (config_data['input_sequence_length'], trainset.shape[-1])
+    print(f'Input shape is {input_shape}')
 
     # graph Info for gcn
     match = re.search("GCN", config_data["model"])
@@ -399,7 +537,8 @@ def test_embedder(module_path,
                   load_weights=True,
                   training=False,
                   subset='test',
-                  output_model=False
+                  output_model=False,
+                  classification = True,
                   ):
 
     nn_baselines_dict = {'1_Layer_MLP': 'mlp_small_embedd_32_seq_5.yaml',
@@ -446,6 +585,7 @@ def test_embedder(module_path,
         if not config_data3D.data3D:
             gt_labels = labels[target_offset:]
         else:
+
             gt_labels_full =labels[:,target_offset:]
             gt_labels = np.reshape(gt_labels_full, (-1, 1))
 
@@ -472,13 +612,14 @@ def test_embedder(module_path,
     
     # model inout_shape ([batch_size, input_sequence_length, nodes])              
     input_shape = (config_data['input_sequence_length'], testset.shape[-1])
+    print(f'Input data size is {input_shape}')
     
     model = get_model(input_shape,
               config_data,
               model_dir=checkpoint_folder,
               load_weights=load_weights,
               compile_model=True,
-              training=training
+              training=training,
               )
     
     inputs = []
@@ -493,8 +634,10 @@ def test_embedder(module_path,
         inputs.append(input_batch.numpy())
         if config_data["reconstruction"] :
             orig_target.append(input_batch.numpy())
+        elif config_data["classification"]:
+            orig_target.append(input_batch.numpy())
         else:
-            orig_target.append(target.numpy())
+            orig_target.append(gt_labels)
             
     if output_model:
         inputs = np.vstack(inputs)

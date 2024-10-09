@@ -48,7 +48,9 @@ def run_configs(dataset_name: str,
                 dataset_trace: int = None,
                 overwrite: bool = False,
                 load_weights: bool = False,
-                config_to_run: str = None):
+                classification: bool = True,
+                config_to_run: str = None,
+                ):
     
     print(f'[INFO]: Module_path = {module_path}')
     configs = glob.glob(os.path.join(module_path, 'quovadis_tad', 'model_configs', '*.yaml'))
@@ -73,20 +75,21 @@ def run_configs(dataset_name: str,
                     print(f'Skipping....: Trained Model on {dataset_name} already exist for configuration {config_name}. To retrain specify overwrite True.')
                     continue
         
-            
-            
+        
         print(f'[INFO]: Training {config_name} on {dataset_name}')
         _ = train_embedder(module_path,
                            dataset_name,
                            dataset_trace=dataset_trace,
                            config_path=config_path,
-                           load_weights=load_weights
+                           load_weights=load_weights,
+                           classification=classification,
                           )
         print(f'[INFO]: Finished training {config_name} on {dataset_name}')
 
 
 def run_configs_trace(dataset_name: str,                
                 overwrite: bool = False,
+                classification: bool = True,
                 load_weights: bool = False,
                 config_to_run: str = None):
     
@@ -98,14 +101,16 @@ def run_configs_trace(dataset_name: str,
                     dataset_trace=i,
                     overwrite= overwrite,
                     load_weights=load_weights,
-                    config_to_run=config_to_run)
+                    config_to_run=config_to_run,
+                    classification=classification)
             
     else:
         run_configs(dataset_name=dataset_name,
                     dataset_trace=None,
                     overwrite= overwrite,
                     load_weights=load_weights,
-                    config_to_run=config_to_run)
+                    config_to_run=config_to_run,
+                    classification=classification)
         
 if __name__ == "__main__":
     typer.run(run_configs_trace)
