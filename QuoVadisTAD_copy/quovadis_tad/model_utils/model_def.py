@@ -16,19 +16,28 @@ from quovadis_tad import config_data3D
 module_path = str(Path.cwd().parents[1])
 
 
-def get_label_loader(labels, config):
-    labels_gen = timeseries_dataset_from_array(
-        labels[:-1],        
+def get_label_loader(labels, config, classification = True):
+    if classification:
+        labels_gen = timeseries_dataset_from_array(
+        labels[:],        
         None,
         sequence_length=config['input_sequence_length'],
         shuffle=False,
         batch_size=config['batch_size'],
     )
+    else:
+        labels_gen = timeseries_dataset_from_array(
+            labels[:-1],        
+            None,
+            sequence_length=config['input_sequence_length'],
+            shuffle=False,
+            batch_size=config['batch_size'],
+        )
     return labels_gen
 
 """Todo: modify get_dataloader to adapt to classificaiton models (supervised)"""
 def get_dataloader(data_array,
-                   labels_array = np.ndarray,
+                   labels_array,
                    input_sequence_length=12,
                    batch_size=1,
                    reconstruction_dataset=False,
@@ -79,7 +88,7 @@ def read_data(module_path,
                 config=None):
     # prepare dataset
     trainset, testset, labels = datasets[dataset_name](module_path) #based on load_Ourbench()
-
+    # print(len(trainset), len(testset), len(labels)) #27, 27, 27
     if config_data3D.data3D:
         print(f'Using 3D dataset...')
         dataset_trace = 0
@@ -90,6 +99,7 @@ def read_data(module_path,
         trainset, valset, testset = preprocess_data_3D(trainset, testset, train_size=0.9, val_size=0.1,
                                                        normalization=preprocess)
         labels=np.array(labels)
+        # print(labels.shape) #(27, 8849, 6)
         labels = labels.max(axis=2)
 
     else:
@@ -435,23 +445,27 @@ def train_embedder(module_path,
     with open(config_path) as f:
         config_data = yaml.safe_load(f)
     
-    
     # handle missing key in old configs, set if doesnt exist
     if 'reconstruction' not in config_data:
         config_data["reconstruction"] = False
         print(f'reconstruction dataset mode not found in config... setting it to False')
-    
+
+    if 'classification' in config_data:
+        print(f'Training in classification mode...')
+
     # read dataset
     trainset, valset, testset, labels, dataset_trace = read_data(module_path,
-                                                         dataset_name,
-                                                         dataset_trace=dataset_trace,
-                                                         preprocess=config_data["preprocess"],
-                                                         config=config_data)
-    labels_gen = get_label_loader(labels, config_data)
-    gt_labels= []
-    for gt in labels_gen.as_numpy_iterator():
-        gt_labels.append(gt)
-    gt_labels = np.vstack(gt_labels)
+                                                                dataset_name,
+                                                                dataset_trace=dataset_trace,
+                                                                preprocess=config_data["preprocess"],
+                                                                config=config_data)
+    # print(f' labels has shape {labels.shape}')
+    # labels_gen = get_label_loader(labels, config_data)
+    # gt_labels= []
+    # for gt in labels_gen.as_numpy_iterator():
+    #     gt_labels.append(gt)
+    # gt_labels = np.vstack(gt_labels)
+    # print(f' labels has shape {labels.shape}')
 
     if dataset_trace is None:
         checkpoint_folder = Path(module_path, 'resources', 'model_checkpoints', dataset_name, config_name.split('.')[0])
@@ -462,7 +476,7 @@ def train_embedder(module_path,
     
     # get data loaders
     train_dataset = get_dataloader(trainset,
-                                   labels_array=gt_labels,
+                                   labels_array=labels,
                                    batch_size=config_data['batch_size'],
                                    input_sequence_length=config_data['input_sequence_length'],
                                    reconstruction_dataset=config_data["reconstruction"],
@@ -470,7 +484,7 @@ def train_embedder(module_path,
                                    shuffle=True,
                                    )
     val_dataset = get_dataloader(valset,
-                                 labels_array=gt_labels,
+                                 labels_array=labels,
                                  batch_size=config_data['batch_size'],
                                  input_sequence_length=config_data['input_sequence_length'],
                                  reconstruction_dataset=config_data["reconstruction"],
@@ -492,11 +506,11 @@ def train_embedder(module_path,
         config_data["graph_info_seq"] =  graph_info_seq
 
     model = get_model(input_shape,
-              config_data,
-              model_dir=checkpoint_folder,
-              load_weights=load_weights,
-              compile_model=True,
-              training=training)
+                    config_data,
+                    model_dir=checkpoint_folder,
+                    load_weights=load_weights,
+                    compile_model=True,
+                    training=training)
     
                   
     # checkpointer
@@ -514,7 +528,7 @@ def train_embedder(module_path,
     )
     # Create an early stopping callback.
     early_stopping = keras.callbacks.EarlyStopping(
-        monitor="val_loss", patience=10, restore_best_weights=True
+        monitor="val_loss", patience=30, restore_best_weights=True
     )
     # Fit the model.
     history = model.fit(

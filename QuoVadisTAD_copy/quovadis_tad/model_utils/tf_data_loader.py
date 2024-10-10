@@ -14,6 +14,7 @@ def create_tf_dataset_classify(
     ):
 
     # Create input sequences
+    print(f'data_array has shape {data_array.shape}, labels_array has shape {labels_array.shape}')
     inputs = timeseries_dataset_from_array(
         data_array,
         None,
@@ -30,7 +31,7 @@ def create_tf_dataset_classify(
         shuffle=False,  # Targets should follow the input sequence
         batch_size=batch_size,
     )
-
+ 
     # Zip inputs and targets together into a dataset
     dataset = tf.data.Dataset.zip((inputs, targets))
     

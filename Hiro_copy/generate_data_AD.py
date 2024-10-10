@@ -654,7 +654,7 @@ class Benchmark():
             dist_period (int): Period of disturbance.
             fsize (float): Fault signal size.
             fsizemin (float): Minimum fault signal size.
-            p (int): Number of scenarios.
+            p (int): Number of S/C (deputy)
             rng_hiro (RandomState): Random number generator.
 
         Returns:
@@ -701,7 +701,7 @@ class Benchmark():
             dist_period (int): Period of disturbance.
             fsize (float): Disturbance signal size.
             fsizemin (float): Minimum disturbance signal size.
-            p (int): Number of scenarios.
+            p (int): Number of S/C
             rng_hiro (RandomState): Random number generator.
 
         Returns:
@@ -761,7 +761,7 @@ if __name__ == "__main__":
     nX2d = bm.nX2d = 4  # number of 2d states
     nP2d = bm.nP2d = 2  # number of 2d positions
     nU2d = bm.nU2d = 2  # number of 2d control inputs
-    nY = bm.nY = 3  # number of measurements
+    nY = bm.nY = 3  # number of measurements per spacecraft
 
     # chief S/C initial condition
     r0_earth = 6378  # radius of Earth
@@ -815,17 +815,15 @@ if __name__ == "__main__":
     Aadhis[:, :, 0] = bm.Aad
 
 
-
     # Define the values to iterate over
     #Ndisturbances_values = [2,8,13]
     Ndisturbances_values = [3, 7, 12]
     dist_period_values = [150,300,400]
     fsize_values = [0.03,0.08,0.2]
     fsizemin = 0.01
-
+    
     Nfaults = 10
     Nswitches = 100
-
 
     # Ensure the output directory exists
     output_dir = 'test_runs'
@@ -841,7 +839,7 @@ if __name__ == "__main__":
                 #labels_joudi = np.zeros((bm.Nsc + 1, Nint))
                 m1jc_his, labels_joudi = bm.generate_fault_signals(Nint, Nfaults, dist_period, fsize, fsizemin)
                 wjc_his = bm.generate_disturbance_signals(Nint, Ndisturbances, dist_period, fsize, fsizemin)
-
+                
                 array_switches = np.arange(1, Nint - 1)
                 idx_switches = rng_hiro.choice(array_switches, Nswitches, False)
                 idx_switches = set(idx_switches)
@@ -867,7 +865,7 @@ if __name__ == "__main__":
                     wjcall = wjc_his[:, k]
                     dynamics_jc = lambda t, X, U: bm.dynamicsall(t, X, U, m1jcall, wjcall)
                     t, Xjcall = bm.rk4(t, Xjcall, Ujcall, dynamics_jc)
-
+                    
                     # Joudi's measurements
                     Xjall_joudi = Xjcall[0:nX * Nsc]
                     Yjall_joudi = bm.measurementnet(t, Xjall_joudi)
