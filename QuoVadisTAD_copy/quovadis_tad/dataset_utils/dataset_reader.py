@@ -55,6 +55,9 @@ class GeneralDatasetNames(Enum):
     ucr_IB_19 = 'ucr_IB_19'
     ucr_IB = 'ucr_IB'
     ourBench='ourBench'
+    ourBench2= 'ourBench2'
+    ourBench3 = 'ourBench3'
+    ourClassdata = 'ourClassdata'
 
 
 def load_wadi_127(data_path: Union[str, Path]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -297,6 +300,105 @@ def load_ourBench(data_path: Union[str, Path]) -> Tuple[np.ndarray, np.ndarray, 
     print("Number of label files:", len(data[2]))
 
     return data[0], data[1], data[2]
+
+def load_ourBench2(data_path: Union[str, Path]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    data_path = Path(data_path)
+    files_path = data_path / DATA_DIR / "ourBench2"
+    # Directory where your files are located
+    directory = files_path
+
+    # Define file patterns
+    train_pattern = os.path.join(directory, 'train_Ndist_*_period_*_fsize_*_train.npy')
+    test_pattern = os.path.join(directory, 'test_Ndist_*_period_*_fsize_*_test.npy')
+    labels_pattern = os.path.join(directory, 'test_Ndist_*_period_*_fsize_*_labels.npy')
+
+    # Gather file paths
+    train_files = glob.glob(train_pattern)
+    test_files = glob.glob(test_pattern)
+    labels_files = glob.glob(labels_pattern)
+
+    # Sort files if needed (to ensure consistent order)
+    train_files.sort()
+    test_files.sort()
+    labels_files.sort()
+
+    # Load data
+    data = []
+    data.append([np.load(file) for file in train_files])  # Load and store train files
+    data.append([np.load(file) for file in test_files])    # Load and store test files
+    data.append([np.load(file) for file in labels_files])  # Load and store label files
+
+    # Example usage
+    print("Number of train files:", len(data[0]))
+    print("Number of test files:", len(data[1]))
+    print("Number of label files:", len(data[2]))
+
+    return data[0], data[1], data[2]
+
+def load_ourBench3(data_path: Union[str, Path]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    data_path = Path(data_path)
+    files_path = data_path / DATA_DIR / "ourBench3"
+    # Directory where your files are located
+    directory = files_path
+
+    # Define file patterns
+    train_pattern = os.path.join(directory, 'train_Ndist_*_period_*_fsize_*_train.npy')
+    test_pattern = os.path.join(directory, 'test_Ndist_*_period_*_fsize_*_test.npy')
+    labels_pattern = os.path.join(directory, 'test_Ndist_*_period_*_fsize_*_labels.npy')
+
+    # Gather file paths
+    train_files = glob.glob(train_pattern)
+    test_files = glob.glob(test_pattern)
+    labels_files = glob.glob(labels_pattern)
+
+    # Sort files if needed (to ensure consistent order)
+    train_files.sort()
+    test_files.sort()
+    labels_files.sort()
+
+    # Load data
+    data = []
+    data.append([np.load(file) for file in train_files])  # Load and store train files
+    data.append([np.load(file) for file in test_files])    # Load and store test files
+    data.append([np.load(file) for file in labels_files])  # Load and store label files
+
+    # Example usage
+    print("Number of train files:", len(data[0]))
+    print("Number of test files:", len(data[1]))
+    print("Number of label files:", len(data[2]))
+
+    return data[0], data[1], data[2]
+
+
+def load_ourClassdata(data_path: Union[str, Path]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    data_path = Path(data_path)
+    files_path = data_path / DATA_DIR / "ourClassdata"
+    # Directory where your files are located
+    directory = files_path
+
+    # Define file patterns
+    data_pattern = os.path.join(directory, 'Ndist_*_period_*_fsize_*_Nfaults_*_train.npy')
+    labels_pattern = os.path.join(directory, 'Ndist_*_period_*_fsize_*_Nfaults_*_labels.npy')
+
+    # Gather file paths
+    data_files = glob.glob(data_pattern)
+    labels_files = glob.glob(labels_pattern)
+
+    # Sort files if needed (to ensure consistent order)
+    data_files.sort()
+    labels_files.sort()
+
+    # Load data
+    data = []
+    data.append([np.load(file) for file in data_files])  # Load and store train files
+    data.append([np.load(file) for file in labels_files])  # Load and store label files
+
+    # Example usage
+    print("Number of data files:", len(data[0]))
+    print("Number of label files:", len(data[1]))
+
+    return data[0], data[1]
+
 datasets:  \
     Dict[str, Callable[[Union[str, Path]], Tuple[np.ndarray, np.ndarray, np.ndarray]]] = {
         GeneralDatasetNames.wadi_127.value: load_wadi_127,
@@ -311,5 +413,8 @@ datasets:  \
         GeneralDatasetNames.ucr_IB_19.value: load_ucr_IB_19,    
         GeneralDatasetNames.ucr_IB.value: load_ucr_IB,
         GeneralDatasetNames.ourBench.value: load_ourBench,
+        GeneralDatasetNames.ourBench2.value: load_ourBench2,
+        GeneralDatasetNames.ourBench3.value: load_ourBench3,
+        GeneralDatasetNames.ourClassdata.value: load_ourClassdata,
     }
 
